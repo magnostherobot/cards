@@ -1,6 +1,6 @@
 use cards::run;
 
 fn main() {
-    run();
+    let _ = pollster::block_on(run());
 }
 
