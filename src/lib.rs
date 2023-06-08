@@ -15,7 +15,7 @@ use wgpu::{
     Device,
     Queue,
     Adapter,
-    Instance, RequestDeviceError, SurfaceCapabilities, TextureFormat,
+    Instance, RequestDeviceError, SurfaceCapabilities, TextureFormat, RenderPipeline, SurfaceConfiguration, PipelineLayout, ShaderModule, VertexState, FragmentState, ColorTargetState, PrimitiveState,
 };
 
 struct State {
@@ -25,6 +25,7 @@ struct State {
     config: wgpu::SurfaceConfiguration,
     size: winit::dpi::PhysicalSize<u32>,
     window: Window,
+    render_pipeline: RenderPipeline,
 }
 
 fn create_instance() -> Instance {
@@ -81,6 +82,77 @@ fn get_surface_format(surface_caps: &SurfaceCapabilities) -> TextureFormat {
         .unwrap_or(surface_caps.formats[0])
 }
 
+fn create_pipeline_layout(device: &Device) -> PipelineLayout {
+    device.create_pipeline_layout(
+        &wgpu::PipelineLayoutDescriptor {
+            label: Some("Render Pipeline Layout"),
+            bind_group_layouts: &[],
+            push_constant_ranges: &[],
+        }
+    )
+}
+
+fn create_vertex_state(shader: &ShaderModule) -> VertexState {
+    wgpu::VertexState {
+        module: shader,
+        entry_point: "vs_main",
+        buffers: &[],
+    }
+}
+
+fn create_fragment_state<'a>(
+    shader: &'a ShaderModule,
+    color_target_states: &'a[Option<ColorTargetState>],
+) -> FragmentState<'a> {
+    FragmentState {
+        module: shader,
+        entry_point: "fs_main",
+        targets: color_target_states,
+    }
+}
+
+fn create_primitive_state() -> PrimitiveState {
+    wgpu::PrimitiveState {
+        topology: wgpu::PrimitiveTopology::TriangleList,
+        strip_index_format: None,
+        front_face: wgpu::FrontFace::Ccw,
+        cull_mode: Some(wgpu::Face::Back),
+        polygon_mode: wgpu::PolygonMode::Fill,
+        unclipped_depth: false,
+        conservative: false,
+    }
+}
+
+fn create_render_pipeline(device: &Device, config: &SurfaceConfiguration) -> RenderPipeline {
+    let shader = device.create_shader_module(wgpu::include_wgsl!("shader.wgsl"));
+    let render_pipeline_layout = create_pipeline_layout(device);
+
+    let color_target_states = &[
+        Some(wgpu::ColorTargetState {
+            format: config.format,
+            blend: Some(wgpu::BlendState::REPLACE),
+            write_mask: wgpu::ColorWrites::ALL,
+        }),
+    ];
+
+    device.create_render_pipeline(
+        &wgpu::RenderPipelineDescriptor {
+            label: Some("Render Pipeline"),
+            layout: Some(&render_pipeline_layout),
+            vertex: create_vertex_state(&shader),
+            fragment: Some(create_fragment_state(&shader, color_target_states)),
+            primitive: create_primitive_state(),
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState {
+                count: 1,
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
+            multiview: None,
+        }
+    )
+}
+
 impl State {
     async fn create(window: Window) -> Result<Self, Box<dyn Error>> {
         let size = window.inner_size();
@@ -103,6 +175,8 @@ impl State {
         };
         surface.configure(&device, &config);
 
+        let render_pipeline = create_render_pipeline(&device, &config);
+
         Ok(Self {
             window,
             surface,
@@ -110,6 +184,7 @@ impl State {
             queue,
             config,
             size,
+            render_pipeline,
         })
     }
 
@@ -142,7 +217,7 @@ impl State {
         });
 
         {
-            let _render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render Pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &view,
@@ -154,6 +229,9 @@ impl State {
                 })],
                 depth_stencil_attachment: None,
             });
+
+            render_pass.set_pipeline(&self.render_pipeline);
+            render_pass.draw(0..3, 0..1);
         }
 
         self.queue.submit(std::iter::once(encoder.finish()));
