@@ -8,6 +8,7 @@ use camera::{Camera, CameraController, CameraUniform};
 use std::{error::Error, fmt::Display};
 
 use winit::{
+    dpi::PhysicalSize,
     event::*,
     event_loop::{ControlFlow, EventLoop},
     window::Window,
@@ -15,14 +16,19 @@ use winit::{
 };
 
 use wgpu::{
+    include_wgsl,
     util::{BufferInitDescriptor, DeviceExt},
-    Adapter, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout,
-    BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingResource, BindingType, BufferUsages,
-    ColorTargetState, Device, FragmentState, Instance, LoadOp, PipelineLayout, PrimitiveState,
-    Queue, RenderPassDescriptor, RenderPipeline, RequestDeviceError, SamplerBindingType,
-    ShaderModule, ShaderStages, Surface, SurfaceCapabilities, SurfaceConfiguration, TextureFormat,
-    TextureSampleType, TextureViewDimension, VertexAttribute, VertexBufferLayout, VertexFormat,
-    VertexState, VertexStepMode,
+    Adapter, Backends, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout,
+    BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingResource, BindingType, BlendState,
+    BufferBindingType, BufferUsages, ColorTargetState, ColorWrites, CommandEncoderDescriptor,
+    Device, DeviceDescriptor, Face, Features, FragmentState, FrontFace, IndexFormat, Instance,
+    InstanceDescriptor, Limits, LoadOp, MultisampleState, Operations, PipelineLayout,
+    PipelineLayoutDescriptor, PolygonMode, PowerPreference, PrimitiveState, PrimitiveTopology,
+    Queue, RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline,
+    RenderPipelineDescriptor, RequestAdapterOptionsBase, RequestDeviceError, SamplerBindingType,
+    ShaderModule, ShaderStages, Surface, SurfaceCapabilities, SurfaceConfiguration, SurfaceError,
+    TextureFormat, TextureSampleType, TextureUsages, TextureViewDescriptor, TextureViewDimension,
+    VertexAttribute, VertexBufferLayout, VertexFormat, VertexState, VertexStepMode,
 };
 
 struct State {
@@ -30,7 +36,7 @@ struct State {
     device: Device,
     queue: Queue,
     config: SurfaceConfiguration,
-    size: winit::dpi::PhysicalSize<u32>,
+    size: PhysicalSize<u32>,
     window: Window,
     render_pipeline: RenderPipeline,
     vertex_buffer: wgpu::Buffer,
@@ -75,30 +81,23 @@ impl Vertex {
     }
 }
 
+#[rustfmt::skip]
 const VERTICES: &[Vertex] = &[
-    Vertex {
-        position: [0.1, 0.1, 0.0],
-        tex_coords: [1.0, 0.0],
-    }, // top right
-    Vertex {
-        position: [0.1, -0.1, 0.0],
-        tex_coords: [1.0, 1.0],
-    }, // bottom right
-    Vertex {
-        position: [-0.1, 0.1, 0.0],
-        tex_coords: [0.0, 0.0],
-    }, // top left
-    Vertex {
-        position: [-0.1, -0.1, 0.0],
-        tex_coords: [0.0, 1.0],
-    }, // bottom left
+    Vertex { position: [ 0.1,  0.1, 0.0], tex_coords: [1.0, 0.0], }, // top right
+    Vertex { position: [ 0.1, -0.1, 0.0], tex_coords: [1.0, 1.0], }, // bottom right
+    Vertex { position: [-0.1,  0.1, 0.0], tex_coords: [0.0, 0.0], }, // top left
+    Vertex { position: [-0.1, -0.1, 0.0], tex_coords: [0.0, 1.0], }, // bottom left
 ];
 
-const INDICES: &[u16] = &[2, 3, 0, 0, 3, 1];
+#[rustfmt::skip]
+const INDICES: &[u16] = &[
+    2, 3, 0,
+    0, 3, 1,
+];
 
 fn create_instance() -> Instance {
-    wgpu::Instance::new(wgpu::InstanceDescriptor {
-        backends: wgpu::Backends::all(),
+    Instance::new(InstanceDescriptor {
+        backends: Backends::all(),
         dx12_shader_compiler: Default::default(),
     })
 }
@@ -108,8 +107,8 @@ async fn create_adapter(
     surface: &Surface,
 ) -> Result<Adapter, CreateAdapterError> {
     instance
-        .request_adapter(&wgpu::RequestAdapterOptionsBase {
-            power_preference: wgpu::PowerPreference::default(),
+        .request_adapter(&RequestAdapterOptionsBase {
+            power_preference: PowerPreference::default(),
             force_fallback_adapter: false,
             compatible_surface: Some(surface),
         })
@@ -122,12 +121,12 @@ async fn create_logical_device_and_queue(
 ) -> Result<(Device, Queue), RequestDeviceError> {
     adapter
         .request_device(
-            &wgpu::DeviceDescriptor {
-                features: wgpu::Features::empty(),
+            &DeviceDescriptor {
+                features: Features::empty(),
                 limits: if cfg!(target_arch = "wasm32") {
-                    wgpu::Limits::downlevel_webgl2_defaults()
+                    Limits::downlevel_webgl2_defaults()
                 } else {
-                    wgpu::Limits::default()
+                    Limits::default()
                 },
                 label: None,
             },
@@ -174,7 +173,7 @@ fn create_pipeline_layout(
     texture_bind_group_layout: &BindGroupLayout,
     camera_bind_group_layout: &BindGroupLayout,
 ) -> PipelineLayout {
-    device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+    device.create_pipeline_layout(&PipelineLayoutDescriptor {
         label: Some("Render Pipeline Layout"),
         bind_group_layouts: &[texture_bind_group_layout, camera_bind_group_layout],
         push_constant_ranges: &[],
@@ -184,7 +183,7 @@ fn create_pipeline_layout(
 fn create_vertex_state(shader: &ShaderModule) -> VertexState {
     const VERTEX_BUFFERS: [VertexBufferLayout; 1] = [Vertex::desc()];
 
-    wgpu::VertexState {
+    VertexState {
         module: shader,
         entry_point: "vs_main",
         buffers: &VERTEX_BUFFERS,
@@ -203,12 +202,12 @@ fn create_fragment_state<'a>(
 }
 
 fn create_primitive_state() -> PrimitiveState {
-    wgpu::PrimitiveState {
-        topology: wgpu::PrimitiveTopology::TriangleList,
+    PrimitiveState {
+        topology: PrimitiveTopology::TriangleList,
         strip_index_format: None,
-        front_face: wgpu::FrontFace::Ccw,
-        cull_mode: Some(wgpu::Face::Back),
-        polygon_mode: wgpu::PolygonMode::Fill,
+        front_face: FrontFace::Ccw,
+        cull_mode: Some(Face::Back),
+        polygon_mode: PolygonMode::Fill,
         unclipped_depth: false,
         conservative: false,
     }
@@ -220,24 +219,24 @@ fn create_render_pipeline(
     texture_bind_group_layout: &BindGroupLayout,
     camera_bind_group_layout: &BindGroupLayout,
 ) -> RenderPipeline {
-    let shader = device.create_shader_module(wgpu::include_wgsl!("shader.wgsl"));
+    let shader = device.create_shader_module(include_wgsl!("shader.wgsl"));
     let render_pipeline_layout =
         create_pipeline_layout(device, texture_bind_group_layout, camera_bind_group_layout);
 
-    let color_target_states = &[Some(wgpu::ColorTargetState {
+    let color_target_states = &[Some(ColorTargetState {
         format: config.format,
-        blend: Some(wgpu::BlendState::REPLACE),
-        write_mask: wgpu::ColorWrites::ALL,
+        blend: Some(BlendState::REPLACE),
+        write_mask: ColorWrites::ALL,
     })];
 
-    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+    device.create_render_pipeline(&RenderPipelineDescriptor {
         label: Some("Render Pipeline"),
         layout: Some(&render_pipeline_layout),
         vertex: create_vertex_state(&shader),
         fragment: Some(create_fragment_state(&shader, color_target_states)),
         primitive: create_primitive_state(),
         depth_stencil: None,
-        multisample: wgpu::MultisampleState {
+        multisample: MultisampleState {
             count: 1,
             mask: !0,
             alpha_to_coverage_enabled: false,
@@ -257,8 +256,8 @@ impl State {
         let surface_caps = surface.get_capabilities(&adapter);
         let surface_format = get_surface_format(&surface_caps);
 
-        let config = wgpu::SurfaceConfiguration {
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+        let config = SurfaceConfiguration {
+            usage: TextureUsages::RENDER_ATTACHMENT,
             format: surface_format,
             width: size.width,
             height: size.height,
@@ -280,7 +279,7 @@ impl State {
                         binding: 0,
                         count: None,
                         visibility: ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
+                        ty: BindingType::Texture {
                             multisampled: false,
                             view_dimension: TextureViewDimension::D2,
                             sample_type: TextureSampleType::Float { filterable: true },
@@ -336,7 +335,7 @@ impl State {
                     binding: 0,
                     visibility: ShaderStages::VERTEX,
                     ty: BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform.to_owned(),
+                        ty: BufferBindingType::Uniform.to_owned(),
                         has_dynamic_offset: false,
                         min_binding_size: None,
                     },
@@ -392,7 +391,7 @@ impl State {
         &self.window
     }
 
-    pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
+    pub fn resize(&mut self, new_size: PhysicalSize<u32>) {
         if new_size.width > 0 && new_size.height > 0 {
             self.size = new_size;
             self.config.width = new_size.width;
@@ -412,24 +411,24 @@ impl State {
             .write_buffer(&self.camera_buffer, 0, cast_slice(&[self.camera_uniform]));
     }
 
-    fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
+    fn render(&mut self) -> Result<(), SurfaceError> {
         let output = self.surface.get_current_texture()?;
         let view = output
             .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
+            .create_view(&TextureViewDescriptor::default());
         let mut encoder = self
             .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            .create_command_encoder(&CommandEncoderDescriptor {
                 label: Some("Render Encoder"),
             });
 
         {
             let mut render_pass = encoder.begin_render_pass(&RenderPassDescriptor {
                 label: Some("Render Pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                color_attachments: &[Some(RenderPassColorAttachment {
                     view: &view,
                     resolve_target: None,
-                    ops: wgpu::Operations {
+                    ops: Operations {
                         load: LoadOp::Clear(wgpu::Color {
                             r: 0.1,
                             g: 0.2,
@@ -448,7 +447,7 @@ impl State {
             render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
 
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-            render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+            render_pass.set_index_buffer(self.index_buffer.slice(..), IndexFormat::Uint16);
 
             render_pass.draw_indexed(0..self.num_indices, 0, 0..1);
         }
@@ -503,11 +502,11 @@ fn handle_redraw_event(state: &mut State) -> Option<ControlFlow> {
     state.update();
     match state.render() {
         Ok(_) => None,
-        Err(wgpu::SurfaceError::Lost) => {
+        Err(SurfaceError::Lost) => {
             state.resize(state.size);
             None
         }
-        Err(wgpu::SurfaceError::OutOfMemory) => Some(ControlFlow::Exit),
+        Err(SurfaceError::OutOfMemory) => Some(ControlFlow::Exit),
         Err(e) => {
             eprintln!("{:?}", e);
             None
@@ -547,7 +546,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
     {
         // Winit prevents sizing with CSS, so we have to set
         // the size manually when on web.
-        use winit::dpi::PhysicalSize;
+        use PhysicalSize;
         window.set_inner_size(PhysicalSize::new(450, 400));
 
         use winit::platform::web::WindowExtWebSys;
