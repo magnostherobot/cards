@@ -1,6 +1,10 @@
 mod texture;
 use bytemuck::cast_slice;
+use log::error;
 use texture::Texture;
+
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
 
 mod camera;
 use camera::{Camera, CameraController, CameraUniform};
@@ -536,9 +540,17 @@ fn handle_event(state: &mut State, event: &Event<()>) -> Option<ControlFlow> {
     }
 }
 
-pub async fn run() -> Result<(), Box<dyn Error>> {
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen(start))]
+pub async fn run() {
     init_logging();
 
+    match run_inner().await {
+        Ok(_) => (),
+        Err(e) => error!("{e:?}"),
+    }
+}
+
+async fn run_inner() -> Result<(), Box<dyn Error>> {
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new().build(&event_loop)?;
 
@@ -546,7 +558,6 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
     {
         // Winit prevents sizing with CSS, so we have to set
         // the size manually when on web.
-        use PhysicalSize;
         window.set_inner_size(PhysicalSize::new(450, 400));
 
         use winit::platform::web::WindowExtWebSys;
