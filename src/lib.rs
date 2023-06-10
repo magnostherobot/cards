@@ -3,7 +3,7 @@ use bytemuck::cast_slice;
 use texture::Texture;
 
 mod camera;
-use camera::{Camera, CameraUniform, CameraController};
+use camera::{Camera, CameraController, CameraUniform};
 
 use std::{error::Error, fmt::Display};
 
@@ -15,15 +15,14 @@ use winit::{
 };
 
 use wgpu::{
-    Surface, Device, Queue, Adapter, Instance, RequestDeviceError,
-    SurfaceCapabilities, TextureFormat, RenderPipeline, SurfaceConfiguration,
-    PipelineLayout, ShaderModule, VertexState, FragmentState, ColorTargetState,
-    PrimitiveState, util::{DeviceExt, BufferInitDescriptor}, VertexBufferLayout,
-    VertexAttribute, BufferUsages, BindGroupLayoutDescriptor,
-    BindGroupLayoutEntry, ShaderStages, TextureViewDimension, TextureSampleType,
-    BindingType, SamplerBindingType, BindGroupDescriptor, BindGroupEntry,
-    BindingResource, BindGroup, RenderPassDescriptor, LoadOp, BindGroupLayout,
-    VertexFormat, VertexStepMode,
+    util::{BufferInitDescriptor, DeviceExt},
+    Adapter, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout,
+    BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingResource, BindingType, BufferUsages,
+    ColorTargetState, Device, FragmentState, Instance, LoadOp, PipelineLayout, PrimitiveState,
+    Queue, RenderPassDescriptor, RenderPipeline, RequestDeviceError, SamplerBindingType,
+    ShaderModule, ShaderStages, Surface, SurfaceCapabilities, SurfaceConfiguration, TextureFormat,
+    TextureSampleType, TextureViewDimension, VertexAttribute, VertexBufferLayout, VertexFormat,
+    VertexState, VertexStepMode,
 };
 
 struct State {
@@ -38,7 +37,7 @@ struct State {
     index_buffer: wgpu::Buffer,
     num_indices: u32,
     diffuse_bind_group: BindGroup,
-    diffuse_texture: texture::Texture,
+    _diffuse_texture: texture::Texture,
     camera: Camera,
     camera_uniform: CameraUniform,
     camera_buffer: wgpu::Buffer,
@@ -77,16 +76,25 @@ impl Vertex {
 }
 
 const VERTICES: &[Vertex] = &[
-    Vertex { position: [ 0.1,  0.1, 0.0], tex_coords: [1.0, 0.0], }, // top right
-    Vertex { position: [ 0.1, -0.1, 0.0], tex_coords: [1.0, 1.0], }, // bottom right
-    Vertex { position: [-0.1,  0.1, 0.0], tex_coords: [0.0, 0.0], }, // top left
-    Vertex { position: [-0.1, -0.1, 0.0], tex_coords: [0.0, 1.0], }, // bottom left
+    Vertex {
+        position: [0.1, 0.1, 0.0],
+        tex_coords: [1.0, 0.0],
+    }, // top right
+    Vertex {
+        position: [0.1, -0.1, 0.0],
+        tex_coords: [1.0, 1.0],
+    }, // bottom right
+    Vertex {
+        position: [-0.1, 0.1, 0.0],
+        tex_coords: [0.0, 0.0],
+    }, // top left
+    Vertex {
+        position: [-0.1, -0.1, 0.0],
+        tex_coords: [0.0, 1.0],
+    }, // bottom left
 ];
 
-const INDICES: &[u16] = &[
-    2, 3, 0,
-    0, 3, 1,
-];
+const INDICES: &[u16] = &[2, 3, 0, 0, 3, 1];
 
 fn create_instance() -> Instance {
     wgpu::Instance::new(wgpu::InstanceDescriptor {
@@ -95,20 +103,25 @@ fn create_instance() -> Instance {
     })
 }
 
-async fn create_adapter(instance: &Instance, surface: &Surface) -> Result<Adapter, CreateAdapterError> {
-    instance.request_adapter(
-        &wgpu::RequestAdapterOptionsBase {
+async fn create_adapter(
+    instance: &Instance,
+    surface: &Surface,
+) -> Result<Adapter, CreateAdapterError> {
+    instance
+        .request_adapter(&wgpu::RequestAdapterOptionsBase {
             power_preference: wgpu::PowerPreference::default(),
             force_fallback_adapter: false,
             compatible_surface: Some(surface),
-        },
-    )
+        })
         .await
         .ok_or(CreateAdapterError {})
 }
 
-async fn create_logical_device_and_queue(adapter: &Adapter) -> Result<(Device, Queue), RequestDeviceError> {
-    adapter.request_device(
+async fn create_logical_device_and_queue(
+    adapter: &Adapter,
+) -> Result<(Device, Queue), RequestDeviceError> {
+    adapter
+        .request_device(
             &wgpu::DeviceDescriptor {
                 features: wgpu::Features::empty(),
                 limits: if cfg!(target_arch = "wasm32") {
@@ -119,7 +132,8 @@ async fn create_logical_device_and_queue(adapter: &Adapter) -> Result<(Device, Q
                 label: None,
             },
             None,
-        ).await
+        )
+        .await
 }
 
 fn create_buffer<A: bytemuck::Pod>(
@@ -128,18 +142,15 @@ fn create_buffer<A: bytemuck::Pod>(
     contents: &[A],
     usage: BufferUsages,
 ) -> wgpu::Buffer {
-    device.create_buffer_init(
-        &BufferInitDescriptor {
-            label: Some(name),
-            contents: bytemuck::cast_slice(contents),
-            usage
-        }
-    )
+    device.create_buffer_init(&BufferInitDescriptor {
+        label: Some(name),
+        contents: bytemuck::cast_slice(contents),
+        usage,
+    })
 }
 
 #[derive(Debug)]
-struct CreateAdapterError {
-}
+struct CreateAdapterError {}
 
 impl Display for CreateAdapterError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -147,11 +158,12 @@ impl Display for CreateAdapterError {
     }
 }
 
-impl Error for CreateAdapterError {
-}
+impl Error for CreateAdapterError {}
 
 fn get_surface_format(surface_caps: &SurfaceCapabilities) -> TextureFormat {
-    surface_caps.formats.iter()
+    surface_caps
+        .formats
+        .iter()
         .copied()
         .find(|f| f.describe().srgb)
         .unwrap_or(surface_caps.formats[0])
@@ -162,22 +174,15 @@ fn create_pipeline_layout(
     texture_bind_group_layout: &BindGroupLayout,
     camera_bind_group_layout: &BindGroupLayout,
 ) -> PipelineLayout {
-    device.create_pipeline_layout(
-        &wgpu::PipelineLayoutDescriptor {
-            label: Some("Render Pipeline Layout"),
-            bind_group_layouts: &[
-                texture_bind_group_layout,
-                camera_bind_group_layout,
-            ],
-            push_constant_ranges: &[],
-        }
-    )
+    device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("Render Pipeline Layout"),
+        bind_group_layouts: &[texture_bind_group_layout, camera_bind_group_layout],
+        push_constant_ranges: &[],
+    })
 }
 
 fn create_vertex_state(shader: &ShaderModule) -> VertexState {
-    const VERTEX_BUFFERS: [VertexBufferLayout; 1] = [
-        Vertex::desc(),
-    ];
+    const VERTEX_BUFFERS: [VertexBufferLayout; 1] = [Vertex::desc()];
 
     wgpu::VertexState {
         module: shader,
@@ -188,7 +193,7 @@ fn create_vertex_state(shader: &ShaderModule) -> VertexState {
 
 fn create_fragment_state<'a>(
     shader: &'a ShaderModule,
-    color_target_states: &'a[Option<ColorTargetState>],
+    color_target_states: &'a [Option<ColorTargetState>],
 ) -> FragmentState<'a> {
     FragmentState {
         module: shader,
@@ -216,36 +221,29 @@ fn create_render_pipeline(
     camera_bind_group_layout: &BindGroupLayout,
 ) -> RenderPipeline {
     let shader = device.create_shader_module(wgpu::include_wgsl!("shader.wgsl"));
-    let render_pipeline_layout = create_pipeline_layout(
-        device,
-        texture_bind_group_layout,
-        camera_bind_group_layout,
-    );
+    let render_pipeline_layout =
+        create_pipeline_layout(device, texture_bind_group_layout, camera_bind_group_layout);
 
-    let color_target_states = &[
-        Some(wgpu::ColorTargetState {
-            format: config.format,
-            blend: Some(wgpu::BlendState::REPLACE),
-            write_mask: wgpu::ColorWrites::ALL,
-        }),
-    ];
+    let color_target_states = &[Some(wgpu::ColorTargetState {
+        format: config.format,
+        blend: Some(wgpu::BlendState::REPLACE),
+        write_mask: wgpu::ColorWrites::ALL,
+    })];
 
-    device.create_render_pipeline(
-        &wgpu::RenderPipelineDescriptor {
-            label: Some("Render Pipeline"),
-            layout: Some(&render_pipeline_layout),
-            vertex: create_vertex_state(&shader),
-            fragment: Some(create_fragment_state(&shader, color_target_states)),
-            primitive: create_primitive_state(),
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState {
-                count: 1,
-                mask: !0,
-                alpha_to_coverage_enabled: false,
-            },
-            multiview: None,
-        }
-    )
+    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some("Render Pipeline"),
+        layout: Some(&render_pipeline_layout),
+        vertex: create_vertex_state(&shader),
+        fragment: Some(create_fragment_state(&shader, color_target_states)),
+        primitive: create_primitive_state(),
+        depth_stencil: None,
+        multisample: wgpu::MultisampleState {
+            count: 1,
+            mask: !0,
+            alpha_to_coverage_enabled: false,
+        },
+        multiview: None,
+    })
 }
 
 impl State {
@@ -260,7 +258,7 @@ impl State {
         let surface_format = get_surface_format(&surface_caps);
 
         let config = wgpu::SurfaceConfiguration {
-            usage: wgpu:: TextureUsages::RENDER_ATTACHMENT,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: surface_format,
             width: size.width,
             height: size.height,
@@ -271,10 +269,11 @@ impl State {
         surface.configure(&device, &config);
 
         let diffuse_bytes = include_bytes!("happy-tree.png");
-        let diffuse_texture = Texture::from_bytes(&device, &queue, diffuse_bytes, "happy-tree.png")?;
+        let diffuse_texture =
+            Texture::from_bytes(&device, &queue, diffuse_bytes, "happy-tree.png")?;
 
-        let texture_bind_group_layout = device.create_bind_group_layout(
-            &BindGroupLayoutDescriptor {
+        let texture_bind_group_layout =
+            device.create_bind_group_layout(&BindGroupLayoutDescriptor {
                 label: Some("texture_bind_group_layout"),
                 entries: &[
                     BindGroupLayoutEntry {
@@ -284,9 +283,7 @@ impl State {
                         ty: wgpu::BindingType::Texture {
                             multisampled: false,
                             view_dimension: TextureViewDimension::D2,
-                            sample_type: TextureSampleType::Float {
-                                filterable: true,
-                            },
+                            sample_type: TextureSampleType::Float { filterable: true },
                         },
                     },
                     BindGroupLayoutEntry {
@@ -294,27 +291,24 @@ impl State {
                         count: None,
                         visibility: ShaderStages::FRAGMENT,
                         ty: BindingType::Sampler(SamplerBindingType::Filtering),
-                    }
-                ]
-            }
-        );
-
-        let diffuse_bind_group = device.create_bind_group(
-            &BindGroupDescriptor {
-                label: Some("diffuse_bind_group"),
-                layout: &texture_bind_group_layout,
-                entries: &[
-                    BindGroupEntry {
-                        binding: 0,
-                        resource: BindingResource::TextureView(&diffuse_texture.view),
-                    },
-                    BindGroupEntry {
-                        binding: 1,
-                        resource: BindingResource::Sampler(&diffuse_texture.sampler),
                     },
                 ],
-            }
-        );
+            });
+
+        let diffuse_bind_group = device.create_bind_group(&BindGroupDescriptor {
+            label: Some("diffuse_bind_group"),
+            layout: &texture_bind_group_layout,
+            entries: &[
+                BindGroupEntry {
+                    binding: 0,
+                    resource: BindingResource::TextureView(&diffuse_texture.view),
+                },
+                BindGroupEntry {
+                    binding: 1,
+                    resource: BindingResource::Sampler(&diffuse_texture.sampler),
+                },
+            ],
+        });
 
         let camera = Camera {
             eye: (0.0, 1.0, 2.0).into(),
@@ -329,44 +323,35 @@ impl State {
         let mut camera_uniform = CameraUniform::new();
         camera_uniform.update_view_proj(&camera);
 
-        let camera_buffer = device.create_buffer_init(
-            &BufferInitDescriptor {
-                label: Some("Camera Buffer"),
-                contents: cast_slice(&[camera_uniform]),
-                usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
-            }
-        );
+        let camera_buffer = device.create_buffer_init(&BufferInitDescriptor {
+            label: Some("Camera Buffer"),
+            contents: cast_slice(&[camera_uniform]),
+            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+        });
 
-        let camera_bind_group_layout = device.create_bind_group_layout(
-            &BindGroupLayoutDescriptor {
+        let camera_bind_group_layout =
+            device.create_bind_group_layout(&BindGroupLayoutDescriptor {
                 label: Some("camera_bind_group_layout"),
-                entries: &[
-                    BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: ShaderStages::VERTEX,
-                        ty: BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform.to_owned(),
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
+                entries: &[BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: ShaderStages::VERTEX,
+                    ty: BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform.to_owned(),
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
                     },
-                ],
-            }
-        );
+                    count: None,
+                }],
+            });
 
-        let camera_bind_group = device.create_bind_group(
-            &BindGroupDescriptor {
-                label: Some("camera_bind_group"),
-                layout: &camera_bind_group_layout,
-                entries: &[
-                    BindGroupEntry {
-                        binding: 0,
-                        resource: camera_buffer.as_entire_binding(),
-                    },
-                ],
-            }
-        );
+        let camera_bind_group = device.create_bind_group(&BindGroupDescriptor {
+            label: Some("camera_bind_group"),
+            layout: &camera_bind_group_layout,
+            entries: &[BindGroupEntry {
+                binding: 0,
+                resource: camera_buffer.as_entire_binding(),
+            }],
+        });
 
         let camera_controller = CameraController::new(0.2);
 
@@ -394,7 +379,7 @@ impl State {
             index_buffer,
             num_indices,
             diffuse_bind_group,
-            diffuse_texture,
+            _diffuse_texture: diffuse_texture,
             camera,
             camera_uniform,
             camera_buffer,
@@ -423,37 +408,39 @@ impl State {
     fn update(&mut self) {
         self.camera_controller.update_camera(&mut self.camera);
         self.camera_uniform.update_view_proj(&self.camera);
-        self.queue.write_buffer(
-            &self.camera_buffer,
-            0,
-            cast_slice(&[self.camera_uniform]),
-        );
+        self.queue
+            .write_buffer(&self.camera_buffer, 0, cast_slice(&[self.camera_uniform]));
     }
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
         let output = self.surface.get_current_texture()?;
-        let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Render Encoder"),
-        });
+        let view = output
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Render Encoder"),
+            });
 
         {
-            let mut render_pass = encoder.begin_render_pass(
-                &RenderPassDescriptor {
-                    label: Some("Render Pass"),
-                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                        view: &view,
-                        resolve_target: None,
-                        ops: wgpu::Operations {
-                            load: LoadOp::Clear(
-                                wgpu::Color { r: 0.1, g: 0.2, b: 0.3, a: 1.0 },
-                            ),
-                            store: true,
-                        },
-                    })],
-                    depth_stencil_attachment: None,
-                }
-            );
+            let mut render_pass = encoder.begin_render_pass(&RenderPassDescriptor {
+                label: Some("Render Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: LoadOp::Clear(wgpu::Color {
+                            r: 0.1,
+                            g: 0.2,
+                            b: 0.3,
+                            a: 1.0,
+                        }),
+                        store: true,
+                    },
+                })],
+                depth_stencil_attachment: None,
+            });
 
             render_pass.set_pipeline(&self.render_pipeline);
 
@@ -461,10 +448,7 @@ impl State {
             render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
 
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-            render_pass.set_index_buffer(
-                self.index_buffer.slice(..),
-                wgpu::IndexFormat::Uint16
-            );
+            render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
 
             render_pass.draw_indexed(0..self.num_indices, 0, 0..1);
         }
@@ -490,12 +474,14 @@ fn init_logging() {
 
 fn handle_window_event(state: &mut State, event: &WindowEvent) -> Option<ControlFlow> {
     match event {
-        WindowEvent::CloseRequested | WindowEvent::KeyboardInput {
-            input: KeyboardInput {
-                state: ElementState::Pressed,
-                virtual_keycode: Some(VirtualKeyCode::Escape),
-                ..
-            },
+        WindowEvent::CloseRequested
+        | WindowEvent::KeyboardInput {
+            input:
+                KeyboardInput {
+                    state: ElementState::Pressed,
+                    virtual_keycode: Some(VirtualKeyCode::Escape),
+                    ..
+                },
             ..
         } => Some(ControlFlow::Exit),
 
@@ -509,7 +495,7 @@ fn handle_window_event(state: &mut State, event: &WindowEvent) -> Option<Control
             None
         }
 
-        _ => None
+        _ => None,
     }
 }
 
@@ -517,9 +503,15 @@ fn handle_redraw_event(state: &mut State) -> Option<ControlFlow> {
     state.update();
     match state.render() {
         Ok(_) => None,
-        Err(wgpu::SurfaceError::Lost) => { state.resize(state.size); None },
+        Err(wgpu::SurfaceError::Lost) => {
+            state.resize(state.size);
+            None
+        }
         Err(wgpu::SurfaceError::OutOfMemory) => Some(ControlFlow::Exit),
-        Err(e) => { eprintln!("{:?}", e); None },
+        Err(e) => {
+            eprintln!("{:?}", e);
+            None
+        }
     }
 }
 
@@ -541,7 +533,7 @@ fn handle_event(state: &mut State, event: &Event<()>) -> Option<ControlFlow> {
             None
         }
 
-        _ => None
+        _ => None,
     }
 }
 
@@ -551,13 +543,13 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new().build(&event_loop)?;
 
-    #[cfg(target_arch="wasm32")]
+    #[cfg(target_arch = "wasm32")]
     {
         // Winit prevents sizing with CSS, so we have to set
         // the size manually when on web.
         use winit::dpi::PhysicalSize;
         window.set_inner_size(PhysicalSize::new(450, 400));
-        
+
         use winit::platform::web::WindowExtWebSys;
         web_sys::window()
             .and_then(|win| win.document())

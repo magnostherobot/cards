@@ -1,6 +1,6 @@
-use bytemuck::{Zeroable, Pod};
-use cgmath::{ perspective, Deg, Point3, Matrix4, Vector3, SquareMatrix };
-use winit::event::{WindowEvent, KeyboardInput, ElementState, VirtualKeyCode};
+use bytemuck::{Pod, Zeroable};
+use cgmath::{perspective, Deg, Matrix4, Point3, SquareMatrix, Vector3};
+use winit::event::{ElementState, KeyboardInput, VirtualKeyCode, WindowEvent};
 
 #[rustfmt::skip]
 pub const OPENGL_TO_WGPU_MATRIX: Matrix4<f32> = Matrix4::new(
@@ -68,11 +68,12 @@ impl CameraController {
     pub fn process_events(&mut self, event: &WindowEvent) -> bool {
         match event {
             WindowEvent::KeyboardInput {
-                input: KeyboardInput {
-                    state,
-                    virtual_keycode: Some(keycode),
-                    ..
-                },
+                input:
+                    KeyboardInput {
+                        state,
+                        virtual_keycode: Some(keycode),
+                        ..
+                    },
                 ..
             } => {
                 let is_pressed = *state == ElementState::Pressed;
@@ -122,8 +123,8 @@ impl CameraController {
         let forward_mag = forward.magnitude();
 
         if self.is_right_pressed {
-            // Rescale the distance between the target and eye so 
-            // that it doesn't change. The eye therefore still 
+            // Rescale the distance between the target and eye so
+            // that it doesn't change. The eye therefore still
             // lies on the circle made by the target and eye.
             camera.eye = camera.target - (forward + right * self.speed).normalize() * forward_mag;
         }
