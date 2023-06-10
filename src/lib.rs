@@ -7,9 +7,6 @@ use camera::{Camera, CameraUniform, CameraController};
 
 use std::{error::Error, fmt::Display};
 
-#[cfg(target_arch="wasm32")]
-use wasm_bindgen::prelude::*;
-
 use winit::{
     event::*,
     event_loop::{ControlFlow, EventLoop},
@@ -464,7 +461,10 @@ impl State {
             render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
 
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-            render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+            render_pass.set_index_buffer(
+                self.index_buffer.slice(..),
+                wgpu::IndexFormat::Uint16
+            );
 
             render_pass.draw_indexed(0..self.num_indices, 0, 0..1);
         }
@@ -545,14 +545,11 @@ fn handle_event(state: &mut State, event: &Event<()>) -> Option<ControlFlow> {
     }
 }
 
-#[cfg_attr(target_arch="wasm32", wasm_bindgen(start))]
 pub async fn run() -> Result<(), Box<dyn Error>> {
     init_logging();
 
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new().build(&event_loop)?;
-
-    let mut state = State::new(window).await?;
 
     #[cfg(target_arch="wasm32")]
     {
@@ -572,6 +569,8 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
             })
             .expect("Couldn't append canvas to document body.");
     }
+
+    let mut state = State::new(window).await?;
 
     event_loop.run(move |event, _, control_flow| {
         if let Some(new_flow) = handle_event(&mut state, &event) {
