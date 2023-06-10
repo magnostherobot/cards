@@ -1,8 +1,12 @@
 mod texture;
+use bytemuck::cast_slice;
+use texture::Texture;
+
+mod camera;
+use camera::{Camera, CameraUniform, CameraController};
 
 use std::{error::Error, fmt::Display};
 
-use texture::Texture;
 #[cfg(target_arch="wasm32")]
 use wasm_bindgen::prelude::*;
 
@@ -38,6 +42,11 @@ struct State {
     num_indices: u32,
     diffuse_bind_group: BindGroup,
     diffuse_texture: texture::Texture,
+    camera: Camera,
+    camera_uniform: CameraUniform,
+    camera_buffer: wgpu::Buffer,
+    camera_bind_group: BindGroup,
+    camera_controller: CameraController,
 }
 
 #[repr(C)]
@@ -151,11 +160,18 @@ fn get_surface_format(surface_caps: &SurfaceCapabilities) -> TextureFormat {
         .unwrap_or(surface_caps.formats[0])
 }
 
-fn create_pipeline_layout(device: &Device, layout: &BindGroupLayout) -> PipelineLayout {
+fn create_pipeline_layout(
+    device: &Device,
+    texture_bind_group_layout: &BindGroupLayout,
+    camera_bind_group_layout: &BindGroupLayout,
+) -> PipelineLayout {
     device.create_pipeline_layout(
         &wgpu::PipelineLayoutDescriptor {
             label: Some("Render Pipeline Layout"),
-            bind_group_layouts: &[layout],
+            bind_group_layouts: &[
+                texture_bind_group_layout,
+                camera_bind_group_layout,
+            ],
             push_constant_ranges: &[],
         }
     )
@@ -200,9 +216,14 @@ fn create_render_pipeline(
     device: &Device,
     config: &SurfaceConfiguration,
     texture_bind_group_layout: &BindGroupLayout,
+    camera_bind_group_layout: &BindGroupLayout,
 ) -> RenderPipeline {
     let shader = device.create_shader_module(wgpu::include_wgsl!("shader.wgsl"));
-    let render_pipeline_layout = create_pipeline_layout(device, texture_bind_group_layout);
+    let render_pipeline_layout = create_pipeline_layout(
+        device,
+        texture_bind_group_layout,
+        camera_bind_group_layout,
+    );
 
     let color_target_states = &[
         Some(wgpu::ColorTargetState {
@@ -298,7 +319,67 @@ impl State {
             }
         );
 
-        let render_pipeline = create_render_pipeline(&device, &config, &texture_bind_group_layout);
+        let camera = Camera {
+            eye: (0.0, 1.0, 2.0).into(),
+            target: (0.0, 0.0, 0.0).into(),
+            up: cgmath::Vector3::unit_y(),
+            aspect: config.width as f32 / config.height as f32,
+            fovy: 45.0,
+            znear: 0.1,
+            zfar: 100.0,
+        };
+
+        let mut camera_uniform = CameraUniform::new();
+        camera_uniform.update_view_proj(&camera);
+
+        let camera_buffer = device.create_buffer_init(
+            &BufferInitDescriptor {
+                label: Some("Camera Buffer"),
+                contents: cast_slice(&[camera_uniform]),
+                usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+            }
+        );
+
+        let camera_bind_group_layout = device.create_bind_group_layout(
+            &BindGroupLayoutDescriptor {
+                label: Some("camera_bind_group_layout"),
+                entries: &[
+                    BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: ShaderStages::VERTEX,
+                        ty: BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform.to_owned(),
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                ],
+            }
+        );
+
+        let camera_bind_group = device.create_bind_group(
+            &BindGroupDescriptor {
+                label: Some("camera_bind_group"),
+                layout: &camera_bind_group_layout,
+                entries: &[
+                    BindGroupEntry {
+                        binding: 0,
+                        resource: camera_buffer.as_entire_binding(),
+                    },
+                ],
+            }
+        );
+
+        let camera_controller = CameraController::new(0.2);
+
+        let render_pipeline = create_render_pipeline(
+            &device,
+            &config,
+            &texture_bind_group_layout,
+            &camera_bind_group_layout,
+        );
+
         let vertex_buffer = create_buffer(&device, "Vertex Buffer", VERTICES, BufferUsages::VERTEX);
         let index_buffer = create_buffer(&device, "Index Buffer", INDICES, BufferUsages::INDEX);
 
@@ -317,6 +398,11 @@ impl State {
             num_indices,
             diffuse_bind_group,
             diffuse_texture,
+            camera,
+            camera_uniform,
+            camera_buffer,
+            camera_bind_group,
+            camera_controller,
         })
     }
 
@@ -333,12 +419,18 @@ impl State {
         }
     }
 
-    fn input(&mut self, _event: &WindowEvent) -> bool {
-        false
+    fn input(&mut self, event: &WindowEvent) -> bool {
+        self.camera_controller.process_events(event)
     }
 
     fn update(&mut self) {
-        // empty
+        self.camera_controller.update_camera(&mut self.camera);
+        self.camera_uniform.update_view_proj(&self.camera);
+        self.queue.write_buffer(
+            &self.camera_buffer,
+            0,
+            cast_slice(&[self.camera_uniform]),
+        );
     }
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
@@ -367,7 +459,10 @@ impl State {
             );
 
             render_pass.set_pipeline(&self.render_pipeline);
+
             render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]);
+            render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
+
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
 
@@ -439,6 +534,11 @@ fn handle_event(state: &mut State, event: &Event<()>) -> Option<ControlFlow> {
 
         Event::RedrawRequested(window_id) if *window_id == state.window().id() => {
             handle_redraw_event(state)
+        }
+
+        Event::MainEventsCleared => {
+            state.window().request_redraw();
+            None
         }
 
         _ => None
