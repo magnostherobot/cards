@@ -1,5 +1,5 @@
 use bytemuck::{Pod, Zeroable};
-use cgmath::{perspective, Deg, Matrix4, Point3, SquareMatrix, Vector3};
+use cgmath::{ortho, Matrix4, Point2, Point3, SquareMatrix, Vector2, Vector3};
 use winit::event::{ElementState, KeyboardInput, VirtualKeyCode, WindowEvent};
 
 #[rustfmt::skip]
@@ -11,19 +11,28 @@ pub const OPENGL_TO_WGPU_MATRIX: Matrix4<f32> = Matrix4::new(
 );
 
 pub struct Camera {
-    pub eye: Point3<f32>,
-    pub target: Point3<f32>,
-    pub up: Vector3<f32>,
+    pub eye: Point2<f32>,
     pub aspect: f32,
-    pub fovy: f32,
+    pub zoom: f32,
     pub znear: f32,
     pub zfar: f32,
 }
 
 impl Camera {
     pub fn build_view_projection_matrix(&self) -> Matrix4<f32> {
-        let view = Matrix4::look_at_rh(self.eye, self.target, self.up);
-        let proj = perspective(Deg(self.fovy), self.aspect, self.znear, self.zfar);
+        let eye_3d = Point3::new(self.eye.x, self.eye.y, 0.0);
+        let view = Matrix4::look_at_rh(eye_3d + Vector3::unit_z(), eye_3d, Vector3::unit_y());
+
+        let horiz_aspect = self.aspect * self.zoom;
+        let proj = ortho(
+            -horiz_aspect,
+            horiz_aspect,
+            -self.zoom,
+            self.zoom,
+            self.znear,
+            self.zfar,
+        );
+
         OPENGL_TO_WGPU_MATRIX * proj * view
     }
 }
@@ -102,34 +111,18 @@ impl CameraController {
     }
 
     pub fn update_camera(&self, camera: &mut Camera) {
-        use cgmath::InnerSpace;
-        let forward = camera.target - camera.eye;
-        let forward_norm = forward.normalize();
-        let forward_mag = forward.magnitude();
-
-        // Prevents glitching when camera gets too close to the
-        // center of the scene.
-        if self.is_forward_pressed && forward_mag > self.speed {
-            camera.eye += forward_norm * self.speed;
+        if self.is_forward_pressed {
+            camera.eye += Vector2::unit_y() * self.speed;
         }
         if self.is_backward_pressed {
-            camera.eye -= forward_norm * self.speed;
+            camera.eye -= Vector2::unit_y() * self.speed;
         }
-
-        let right = forward_norm.cross(camera.up);
-
-        // Redo radius calc in case the fowrard/backward is pressed.
-        let forward = camera.target - camera.eye;
-        let forward_mag = forward.magnitude();
 
         if self.is_right_pressed {
-            // Rescale the distance between the target and eye so
-            // that it doesn't change. The eye therefore still
-            // lies on the circle made by the target and eye.
-            camera.eye = camera.target - (forward + right * self.speed).normalize() * forward_mag;
+            camera.eye += Vector2::unit_x() * self.speed;
         }
         if self.is_left_pressed {
-            camera.eye = camera.target - (forward - right * self.speed).normalize() * forward_mag;
+            camera.eye -= Vector2::unit_x() * self.speed;
         }
     }
 }
