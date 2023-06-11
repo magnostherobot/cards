@@ -7,6 +7,14 @@ pub struct Texture {
     pub sampler: wgpu::Sampler,
 }
 
+#[macro_export]
+macro_rules! include_texture {
+    ($device:expr, $queue:expr, $file:expr $(,)?) => {{
+        let bytes = include_bytes!($file);
+        Texture::from_bytes($device, $queue, bytes, $file)
+    }};
+}
+
 impl Texture {
     pub fn from_bytes(
         device: &wgpu::Device,
@@ -64,7 +72,7 @@ impl Texture {
             address_mode_u: wgpu::AddressMode::ClampToEdge,
             address_mode_v: wgpu::AddressMode::ClampToEdge,
             address_mode_w: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Linear,
+            mag_filter: wgpu::FilterMode::Nearest,
             min_filter: wgpu::FilterMode::Nearest,
             mipmap_filter: wgpu::FilterMode::Nearest,
             ..Default::default()

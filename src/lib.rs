@@ -91,15 +91,12 @@ impl Vertex {
 
 struct Instance {
     position: cgmath::Vector3<f32>,
-    rotation: cgmath::Quaternion<f32>,
 }
 
 impl Instance {
     fn to_raw(&self) -> InstanceRaw {
         InstanceRaw {
-            model: (cgmath::Matrix4::from_translation(self.position)
-                * cgmath::Matrix4::from(self.rotation))
-            .into(),
+            model: cgmath::Matrix4::from_translation(self.position).into(),
         }
     }
 }
@@ -143,12 +140,14 @@ impl InstanceRaw {
     }
 }
 
+const CARD_RATIO: f32 = 1.411_764_7;
+
 #[rustfmt::skip]
 const VERTICES: &[Vertex] = &[
-    Vertex { position: [ 0.1,  0.1, 0.0], tex_coords: [1.0, 0.0], }, // top right
-    Vertex { position: [ 0.1, -0.1, 0.0], tex_coords: [1.0, 1.0], }, // bottom right
-    Vertex { position: [-0.1,  0.1, 0.0], tex_coords: [0.0, 0.0], }, // top left
-    Vertex { position: [-0.1, -0.1, 0.0], tex_coords: [0.0, 1.0], }, // bottom left
+    Vertex { position: [ 0.1,  0.1 * CARD_RATIO, 0.0], tex_coords: [1.0 / 13.0, 0.0 / 4.0], }, // top right
+    Vertex { position: [ 0.1, -0.1 * CARD_RATIO, 0.0], tex_coords: [1.0 / 13.0, 1.0 / 4.0], }, // bottom right
+    Vertex { position: [-0.1,  0.1 * CARD_RATIO, 0.0], tex_coords: [0.0 / 13.0, 0.0 / 4.0], }, // top left
+    Vertex { position: [-0.1, -0.1 * CARD_RATIO, 0.0], tex_coords: [0.0 / 13.0, 1.0 / 4.0], }, // bottom left
 ];
 
 #[rustfmt::skip]
@@ -287,7 +286,7 @@ fn create_render_pipeline(
 
     let color_target_states = &[Some(ColorTargetState {
         format: config.format,
-        blend: Some(BlendState::REPLACE),
+        blend: Some(BlendState::ALPHA_BLENDING),
         write_mask: ColorWrites::ALL,
     })];
 
@@ -329,9 +328,7 @@ impl State {
         };
         surface.configure(&device, &config);
 
-        let diffuse_bytes = include_bytes!("happy-tree.png");
-        let diffuse_texture =
-            Texture::from_bytes(&device, &queue, diffuse_bytes, "happy-tree.png")?;
+        let diffuse_texture = include_texture!(&device, &queue, "cards.png")?;
 
         let texture_bind_group_layout =
             device.create_bind_group_layout(&BindGroupLayoutDescriptor {
@@ -426,32 +423,16 @@ impl State {
 
         let num_indices = INDICES.len() as u32;
 
-        const NUM_INSTANCES_PER_ROW: u32 = 10;
-        const INSTANCE_DISPLACEMENT: cgmath::Vector3<f32> = cgmath::Vector3::new(
-            NUM_INSTANCES_PER_ROW as f32 * 0.5,
-            0.0,
-            NUM_INSTANCES_PER_ROW as f32 * 0.5,
-        );
+        let instances = (0..4)
+            .flat_map(|suit| {
+                (0..13).map(move |rank| {
+                    let position = cgmath::Vector3::new(
+                        0.25 * (rank as f32 - 6.0),
+                        0.5 * (suit as f32 - 1.5),
+                        0.0,
+                    );
 
-        let instances = (0..NUM_INSTANCES_PER_ROW)
-            .flat_map(|z| {
-                (0..NUM_INSTANCES_PER_ROW).map(move |x| {
-                    let position = cgmath::Vector3 {
-                        x: x as f32,
-                        y: 0.0,
-                        z: z as f32,
-                    } - INSTANCE_DISPLACEMENT;
-
-                    let rotation = if position.is_zero() {
-                        cgmath::Quaternion::from_axis_angle(
-                            cgmath::Vector3::unit_z(),
-                            cgmath::Deg(0.0),
-                        )
-                    } else {
-                        cgmath::Quaternion::from_axis_angle(position.normalize(), cgmath::Deg(45.0))
-                    };
-
-                    Instance { position, rotation }
+                    Instance { position }
                 })
             })
             .collect::<Vec<_>>();
