@@ -1,6 +1,9 @@
 use bytemuck::{Pod, Zeroable};
 use cgmath::{ortho, Matrix4, Point2, Point3, SquareMatrix, Vector2, Vector3};
-use winit::event::{ElementState, KeyboardInput, VirtualKeyCode, WindowEvent};
+use winit::{
+    dpi::PhysicalSize,
+    event::{ElementState, KeyboardInput, VirtualKeyCode, WindowEvent},
+};
 
 #[rustfmt::skip]
 pub const OPENGL_TO_WGPU_MATRIX: Matrix4<f32> = Matrix4::new(
@@ -12,7 +15,7 @@ pub const OPENGL_TO_WGPU_MATRIX: Matrix4<f32> = Matrix4::new(
 
 pub struct Camera {
     pub eye: Point2<f32>,
-    pub aspect: f32,
+    pub viewport_size: PhysicalSize<u32>,
     pub zoom: f32,
     pub znear: f32,
     pub zfar: f32,
@@ -23,12 +26,13 @@ impl Camera {
         let eye_3d = Point3::new(self.eye.x, self.eye.y, 0.0);
         let view = Matrix4::look_at_rh(eye_3d + Vector3::unit_z(), eye_3d, Vector3::unit_y());
 
-        let horiz_aspect = self.aspect * self.zoom;
+        let width = (self.viewport_size.width as f32) / self.zoom;
+        let height = (self.viewport_size.height as f32) / self.zoom;
         let proj = ortho(
-            -horiz_aspect,
-            horiz_aspect,
-            -self.zoom,
-            self.zoom,
+            -width / 2.0,
+            width / 2.0,
+            -height / 2.0,
+            height / 2.0,
             self.znear,
             self.zfar,
         );

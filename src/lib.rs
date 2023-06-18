@@ -1,6 +1,6 @@
 mod texture;
 use bytemuck::cast_slice;
-use log::error;
+use log::{debug, error, info};
 use texture::Texture;
 
 #[cfg(target_arch = "wasm32")]
@@ -140,14 +140,16 @@ impl InstanceRaw {
     }
 }
 
-const CARD_RATIO: f32 = 1.411_764_7;
+// Cards are 34x48
+const CARD_HEIGHT: u32 = 48;
+const CARD_WIDTH: u32 = 34;
 
 #[rustfmt::skip]
 const VERTICES: &[Vertex] = &[
-    Vertex { position: [ 0.1,  0.1 * CARD_RATIO, 0.0], tex_coords: [1.0 / 13.0, 0.0 / 4.0], }, // top right
-    Vertex { position: [ 0.1, -0.1 * CARD_RATIO, 0.0], tex_coords: [1.0 / 13.0, 1.0 / 4.0], }, // bottom right
-    Vertex { position: [-0.1,  0.1 * CARD_RATIO, 0.0], tex_coords: [0.0 / 13.0, 0.0 / 4.0], }, // top left
-    Vertex { position: [-0.1, -0.1 * CARD_RATIO, 0.0], tex_coords: [0.0 / 13.0, 1.0 / 4.0], }, // bottom left
+    Vertex { position: [ 0.5 * CARD_WIDTH as f32,  0.5 * CARD_HEIGHT as f32, 0.0], tex_coords: [1.0 / 13.0, 0.0 / 4.0], }, // top right
+    Vertex { position: [ 0.5 * CARD_WIDTH as f32, -0.5 * CARD_HEIGHT as f32, 0.0], tex_coords: [1.0 / 13.0, 1.0 / 4.0], }, // bottom right
+    Vertex { position: [-0.5 * CARD_WIDTH as f32,  0.5 * CARD_HEIGHT as f32, 0.0], tex_coords: [0.0 / 13.0, 0.0 / 4.0], }, // top left
+    Vertex { position: [-0.5 * CARD_WIDTH as f32, -0.5 * CARD_HEIGHT as f32, 0.0], tex_coords: [0.0 / 13.0, 1.0 / 4.0], }, // bottom left
 ];
 
 #[rustfmt::skip]
@@ -370,8 +372,8 @@ impl State {
 
         let camera = Camera {
             eye: cgmath::Point2::origin(),
-            aspect: size.width as f32 / size.height as f32,
-            zoom: 1.0,
+            viewport_size: size,
+            zoom: 2.0,
             znear: 0.1,
             zfar: 100.0,
         };
@@ -409,7 +411,7 @@ impl State {
             }],
         });
 
-        let camera_controller = CameraController::new(0.2);
+        let camera_controller = CameraController::new(2.0);
 
         let render_pipeline = create_render_pipeline(
             &device,
@@ -427,8 +429,8 @@ impl State {
             .flat_map(|suit| {
                 (0..13).map(move |rank| {
                     let position = cgmath::Vector3::new(
-                        0.25 * (rank as f32 - 6.0),
-                        0.5 * (suit as f32 - 1.5),
+                        1.2 * (CARD_WIDTH as f32) * (rank as f32 - 6.0),
+                        1.2 * (CARD_HEIGHT as f32) * (suit as f32 - 1.5),
                         0.0,
                     );
 
@@ -477,8 +479,13 @@ impl State {
             self.config.width = new_size.width;
             self.config.height = new_size.height;
             self.surface.configure(&self.device, &self.config);
-            self.camera.aspect = new_size.width as f32 / new_size.height as f32;
+            self.camera.viewport_size = new_size;
         }
+
+        info!(
+            "set physical size to {}x{}",
+            new_size.width, new_size.height
+        );
     }
 
     fn input(&mut self, event: &WindowEvent) -> bool {
@@ -597,6 +604,8 @@ fn handle_redraw_event(state: &mut State) -> Option<ControlFlow> {
 }
 
 fn handle_event(state: &mut State, event: &Event<()>) -> Option<ControlFlow> {
+    debug!("{event:?}");
+
     match event {
         Event::WindowEvent {
             ref event,
