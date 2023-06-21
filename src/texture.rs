@@ -1,5 +1,6 @@
-use anyhow::*;
 use image::GenericImageView;
+
+use crate::errors::*;
 
 pub struct Texture {
     pub texture: wgpu::Texture,
@@ -22,7 +23,7 @@ impl Texture {
         bytes: &[u8],
         label: &str,
     ) -> Result<Self> {
-        let img = image::load_from_memory(bytes)?;
+        let img = image::load_from_memory(bytes).chain_err(|| "couldn't load image from memory")?;
         Self::from_image(device, queue, &img, Some(label))
     }
 

@@ -11,13 +11,14 @@ mod state;
 
 use wgpu::SurfaceError;
 
-use std::error::Error;
-
 use winit::{
     event::*,
     event_loop::{ControlFlow, EventLoop},
     window::WindowBuilder,
 };
+
+mod errors;
+use errors::*;
 
 fn init_logging() {
     cfg_if::cfg_if! {
@@ -108,9 +109,11 @@ pub async fn run() {
     }
 }
 
-async fn run_inner() -> Result<(), Box<dyn Error>> {
+async fn run_inner() -> Result<()> {
     let event_loop = EventLoop::new();
-    let window = WindowBuilder::new().build(&event_loop)?;
+    let window = WindowBuilder::new()
+        .build(&event_loop)
+        .chain_err(|| "couldn't create new window")?;
 
     #[cfg(target_arch = "wasm32")]
     {

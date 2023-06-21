@@ -1,5 +1,3 @@
-use std::{error::Error, fmt::Display};
-
 use bytemuck::cast_slice;
 use cgmath::EuclideanSpace;
 use log::info;
@@ -13,15 +11,16 @@ use wgpu::{
     IndexFormat, InstanceDescriptor, Limits, LoadOp, MultisampleState, Operations, PipelineLayout,
     PipelineLayoutDescriptor, PolygonMode, PowerPreference, PrimitiveState, PrimitiveTopology,
     Queue, RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline,
-    RenderPipelineDescriptor, RequestAdapterOptionsBase, RequestDeviceError, SamplerBindingType,
-    ShaderModule, ShaderStages, Surface, SurfaceCapabilities, SurfaceConfiguration, SurfaceError,
-    TextureFormat, TextureSampleType, TextureUsages, TextureViewDescriptor, TextureViewDimension,
-    VertexAttribute, VertexBufferLayout, VertexFormat, VertexState, VertexStepMode,
+    RenderPipelineDescriptor, RequestAdapterOptionsBase, SamplerBindingType, ShaderModule,
+    ShaderStages, Surface, SurfaceCapabilities, SurfaceConfiguration, SurfaceError, TextureFormat,
+    TextureSampleType, TextureUsages, TextureViewDescriptor, TextureViewDimension, VertexAttribute,
+    VertexBufferLayout, VertexFormat, VertexState, VertexStepMode,
 };
 use winit::{dpi::PhysicalSize, event::WindowEvent, window::Window};
 
 use crate::{
     camera::{Camera, CameraController, CameraUniform},
+    errors::*,
     include_texture,
     texture::{self, Texture},
 };
@@ -132,10 +131,7 @@ fn create_instance() -> wgpu::Instance {
     })
 }
 
-async fn create_adapter(
-    instance: &wgpu::Instance,
-    surface: &Surface,
-) -> Result<Adapter, CreateAdapterError> {
+async fn create_adapter(instance: &wgpu::Instance, surface: &Surface) -> Result<Adapter> {
     instance
         .request_adapter(&RequestAdapterOptionsBase {
             power_preference: PowerPreference::default(),
@@ -143,12 +139,10 @@ async fn create_adapter(
             compatible_surface: Some(surface),
         })
         .await
-        .ok_or(CreateAdapterError {})
+        .chain_err(|| "couldn't create adapter")
 }
 
-async fn create_logical_device_and_queue(
-    adapter: &Adapter,
-) -> Result<(Device, Queue), RequestDeviceError> {
+async fn create_logical_device_and_queue(adapter: &Adapter) -> Result<(Device, Queue)> {
     adapter
         .request_device(
             &DeviceDescriptor {
@@ -163,6 +157,7 @@ async fn create_logical_device_and_queue(
             None,
         )
         .await
+        .chain_err(|| "couldn't create logical device and queue")
 }
 
 fn create_buffer<A: bytemuck::Pod>(
@@ -177,17 +172,6 @@ fn create_buffer<A: bytemuck::Pod>(
         usage,
     })
 }
-
-#[derive(Debug)]
-struct CreateAdapterError {}
-
-impl Display for CreateAdapterError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "error creating adapter")
-    }
-}
-
-impl Error for CreateAdapterError {}
 
 fn get_surface_format(surface_caps: &SurfaceCapabilities) -> TextureFormat {
     surface_caps
@@ -392,11 +376,12 @@ pub struct State {
 }
 
 impl State {
-    pub async fn new(window: Window) -> Result<Self, Box<dyn Error>> {
+    pub async fn new(window: Window) -> Result<Self> {
         let size = window.inner_size();
 
         let instance = create_instance();
-        let surface = unsafe { instance.create_surface(&window) }?;
+        let surface =
+            unsafe { instance.create_surface(&window) }.chain_err(|| "couldn't create surface")?;
         let adapter = create_adapter(&instance, &surface).await?;
         let (device, queue) = create_logical_device_and_queue(&adapter).await?;
         let surface_caps = surface.get_capabilities(&adapter);
@@ -514,7 +499,7 @@ impl State {
             .write_buffer(&self.camera_buffer, 0, cast_slice(&[self.camera_uniform]));
     }
 
-    pub fn render(&mut self) -> Result<(), SurfaceError> {
+    pub fn render(&mut self) -> core::result::Result<(), SurfaceError> {
         let output = self.surface.get_current_texture()?;
         let view = output
             .texture
