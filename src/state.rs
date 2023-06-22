@@ -1,81 +1,31 @@
 use bytemuck::cast_slice;
 use cgmath::EuclideanSpace;
 use log::info;
+use strum::IntoEnumIterator;
 use wgpu::{
     include_wgsl,
     util::{BufferInitDescriptor, DeviceExt},
     Adapter, Backends, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout,
     BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingResource, BindingType, BlendState,
-    BufferAddress, BufferBindingType, BufferUsages, ColorTargetState, ColorWrites,
-    CommandEncoderDescriptor, Device, DeviceDescriptor, Face, Features, FragmentState, FrontFace,
-    IndexFormat, InstanceDescriptor, Limits, LoadOp, MultisampleState, Operations, PipelineLayout,
+    BufferBindingType, BufferUsages, ColorTargetState, ColorWrites, CommandEncoderDescriptor,
+    Device, DeviceDescriptor, Face, Features, FragmentState, FrontFace, IndexFormat,
+    InstanceDescriptor, Limits, LoadOp, MultisampleState, Operations, PipelineLayout,
     PipelineLayoutDescriptor, PolygonMode, PowerPreference, PrimitiveState, PrimitiveTopology,
     Queue, RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline,
     RenderPipelineDescriptor, RequestAdapterOptionsBase, SamplerBindingType, ShaderModule,
     ShaderStages, Surface, SurfaceCapabilities, SurfaceConfiguration, SurfaceError, TextureFormat,
     TextureSampleType, TextureUsages, TextureViewDescriptor, TextureViewDimension,
-    VertexBufferLayout, VertexState, VertexStepMode,
+    VertexBufferLayout, VertexState,
 };
 use winit::{dpi::PhysicalSize, event::WindowEvent, window::Window};
 
 use crate::{
     camera::{Camera, CameraController, CameraUniform},
-    card,
+    card::{self, Card, Suit},
     errors::*,
     include_texture,
     texture::{self, Texture},
 };
-
-struct Instance {
-    position: cgmath::Vector3<f32>,
-}
-
-impl Instance {
-    fn to_raw(&self) -> InstanceRaw {
-        InstanceRaw {
-            model: cgmath::Matrix4::from_translation(self.position).into(),
-        }
-    }
-}
-
-#[repr(C)]
-#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-struct InstanceRaw {
-    model: [[f32; 4]; 4],
-}
-
-impl InstanceRaw {
-    const fn desc() -> VertexBufferLayout<'static> {
-        use std::mem::size_of;
-
-        VertexBufferLayout {
-            array_stride: size_of::<InstanceRaw>() as BufferAddress,
-            step_mode: VertexStepMode::Instance,
-            attributes: &[
-                wgpu::VertexAttribute {
-                    offset: 0,
-                    shader_location: 5,
-                    format: wgpu::VertexFormat::Float32x4,
-                },
-                wgpu::VertexAttribute {
-                    offset: size_of::<[f32; 4]>() as wgpu::BufferAddress,
-                    shader_location: 6,
-                    format: wgpu::VertexFormat::Float32x4,
-                },
-                wgpu::VertexAttribute {
-                    offset: size_of::<[f32; 8]>() as wgpu::BufferAddress,
-                    shader_location: 7,
-                    format: wgpu::VertexFormat::Float32x4,
-                },
-                wgpu::VertexAttribute {
-                    offset: size_of::<[f32; 12]>() as wgpu::BufferAddress,
-                    shader_location: 8,
-                    format: wgpu::VertexFormat::Float32x4,
-                },
-            ],
-        }
-    }
-}
 
 fn create_instance() -> wgpu::Instance {
     wgpu::Instance::new(InstanceDescriptor {
@@ -136,7 +86,7 @@ fn create_pipeline_layout(
 
 fn create_vertex_state(shader: &ShaderModule) -> VertexState {
     const VERTEX_BUFFERS: [VertexBufferLayout; 2] =
-        [card::Vertex::BUFFER_LAYOUT, InstanceRaw::desc()];
+        [card::Vertex::BUFFER_LAYOUT, card::Instance::BUFFER_LAYOUT];
 
     VertexState {
         module: shader,
@@ -312,7 +262,7 @@ pub struct State {
     camera_buffer: wgpu::Buffer,
     camera_bind_group: BindGroup,
     camera_controller: CameraController,
-    instances: Vec<Instance>,
+    cards: Vec<Card>,
     instance_buffer: wgpu::Buffer,
 }
 
@@ -366,21 +316,31 @@ impl State {
 
         let num_indices = card::INDICES.len() as u32;
 
-        let instances = (0..4)
+        let cards = Suit::iter()
             .flat_map(|suit| {
-                (0..13).map(move |rank| {
+                (0..13u8).map(move |rank| {
                     let position = cgmath::Vector3::new(
-                        1.2 * (card::WIDTH as f32) * (rank as f32 - 6.0),
-                        1.2 * (card::HEIGHT as f32) * (suit as f32 - 1.5),
-                        0.0,
+                        (1.2 * card::WIDTH as f32 * (rank as f32 - 6.0)) as i32,
+                        (1.2 * card::HEIGHT as f32 * (suit.doppelkopf_suit_strength() as f32 - 2.0))
+                            as i32,
+                        0,
                     );
 
-                    Instance { position }
+                    Card {
+                        position,
+                        facedown: false,
+                        rank,
+                        suit,
+                    }
                 })
             })
             .collect::<Vec<_>>();
 
-        let instance_data = instances.iter().map(Instance::to_raw).collect::<Vec<_>>();
+        let instance_data = cards
+            .iter()
+            .map(Card::to_instance)
+            .collect::<Result<Vec<_>>>()?;
+
         let instance_buffer = device.create_buffer_init(&BufferInitDescriptor {
             label: Some("Instance Buffer"),
             contents: cast_slice(&instance_data),
@@ -405,7 +365,7 @@ impl State {
             camera_buffer,
             camera_bind_group,
             camera_controller,
-            instances,
+            cards,
             instance_buffer,
         })
     }
@@ -479,7 +439,7 @@ impl State {
             render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
             render_pass.set_index_buffer(self.index_buffer.slice(..), IndexFormat::Uint16);
 
-            render_pass.draw_indexed(0..self.num_indices, 0, 0..self.instances.len() as _);
+            render_pass.draw_indexed(0..self.num_indices, 0, 0..self.cards.len() as _);
         }
 
         self.queue.submit(std::iter::once(encoder.finish()));

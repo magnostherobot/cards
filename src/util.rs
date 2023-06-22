@@ -18,11 +18,13 @@ macro_rules! count {
 /// Creates an array of VertexAttributes, offset correctly based on the formats passed in as arguments.
 #[macro_export]
 macro_rules! attributes {
-    ( $( $x:expr ),* ) => {{
+    ( $( $x:expr ),* $(,)? ) => {{ attributes!(start_location 0; $($x,)*) }};
+    ( start_location $start_location:expr; $( $x:expr ),* $(,)? ) => {{
         use $crate::util::vertex_format_size;
         use $crate::count;
 
-        let mut shader_location: u32 = 0;
+        let mut shader_location: u32 = $start_location;
+        let mut index: usize = 0;
         let mut offset: u64 = 0;
         const ATTR_COUNT: usize = count!($($x)*);
 
@@ -35,19 +37,20 @@ macro_rules! attributes {
         $(
             #[allow(unused_assignments)]
             {
-                data[shader_location as usize] = VertexAttribute {
+                data[index] = VertexAttribute {
                     offset,
                     shader_location,
                     format: $x,
                 };
 
                 shader_location += 1;
+                index += 1;
                 offset += vertex_format_size($x) as u64;
             }
         )*
 
         data
-    }}
+    }};
 }
 
 pub fn create_buffer<A: bytemuck::Pod>(
