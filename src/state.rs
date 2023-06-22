@@ -13,47 +13,18 @@ use wgpu::{
     Queue, RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline,
     RenderPipelineDescriptor, RequestAdapterOptionsBase, SamplerBindingType, ShaderModule,
     ShaderStages, Surface, SurfaceCapabilities, SurfaceConfiguration, SurfaceError, TextureFormat,
-    TextureSampleType, TextureUsages, TextureViewDescriptor, TextureViewDimension, VertexAttribute,
-    VertexBufferLayout, VertexFormat, VertexState, VertexStepMode,
+    TextureSampleType, TextureUsages, TextureViewDescriptor, TextureViewDimension,
+    VertexBufferLayout, VertexState, VertexStepMode,
 };
 use winit::{dpi::PhysicalSize, event::WindowEvent, window::Window};
 
 use crate::{
     camera::{Camera, CameraController, CameraUniform},
+    card,
     errors::*,
     include_texture,
     texture::{self, Texture},
 };
-
-#[repr(C)]
-#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-struct Vertex {
-    position: [f32; 3],
-    tex_coords: [f32; 2],
-}
-
-impl Vertex {
-    const fn desc() -> VertexBufferLayout<'static> {
-        use std::mem::size_of;
-
-        VertexBufferLayout {
-            array_stride: size_of::<Vertex>() as wgpu::BufferAddress,
-            step_mode: VertexStepMode::Vertex,
-            attributes: &[
-                VertexAttribute {
-                    offset: 0,
-                    shader_location: 0,
-                    format: VertexFormat::Float32x3,
-                },
-                VertexAttribute {
-                    offset: size_of::<[f32; 3]>() as wgpu::BufferAddress,
-                    shader_location: 1,
-                    format: VertexFormat::Float32x2,
-                },
-            ],
-        }
-    }
-}
 
 struct Instance {
     position: cgmath::Vector3<f32>,
@@ -106,24 +77,6 @@ impl InstanceRaw {
     }
 }
 
-// Cards are 34x48
-const CARD_HEIGHT: u32 = 48;
-const CARD_WIDTH: u32 = 34;
-
-#[rustfmt::skip]
-const VERTICES: &[Vertex] = &[
-    Vertex { position: [ 0.5 * CARD_WIDTH as f32,  0.5 * CARD_HEIGHT as f32, 0.0], tex_coords: [1.0 / 13.0, 0.0 / 4.0], }, // top right
-    Vertex { position: [ 0.5 * CARD_WIDTH as f32, -0.5 * CARD_HEIGHT as f32, 0.0], tex_coords: [1.0 / 13.0, 1.0 / 4.0], }, // bottom right
-    Vertex { position: [-0.5 * CARD_WIDTH as f32,  0.5 * CARD_HEIGHT as f32, 0.0], tex_coords: [0.0 / 13.0, 0.0 / 4.0], }, // top left
-    Vertex { position: [-0.5 * CARD_WIDTH as f32, -0.5 * CARD_HEIGHT as f32, 0.0], tex_coords: [0.0 / 13.0, 1.0 / 4.0], }, // bottom left
-];
-
-#[rustfmt::skip]
-const INDICES: &[u16] = &[
-    2, 3, 0,
-    0, 3, 1,
-];
-
 fn create_instance() -> wgpu::Instance {
     wgpu::Instance::new(InstanceDescriptor {
         backends: Backends::all(),
@@ -160,19 +113,6 @@ async fn create_logical_device_and_queue(adapter: &Adapter) -> Result<(Device, Q
         .chain_err(|| "couldn't create logical device and queue")
 }
 
-fn create_buffer<A: bytemuck::Pod>(
-    device: &Device,
-    name: &str,
-    contents: &[A],
-    usage: BufferUsages,
-) -> wgpu::Buffer {
-    device.create_buffer_init(&BufferInitDescriptor {
-        label: Some(name),
-        contents: bytemuck::cast_slice(contents),
-        usage,
-    })
-}
-
 fn get_surface_format(surface_caps: &SurfaceCapabilities) -> TextureFormat {
     surface_caps
         .formats
@@ -195,7 +135,8 @@ fn create_pipeline_layout(
 }
 
 fn create_vertex_state(shader: &ShaderModule) -> VertexState {
-    const VERTEX_BUFFERS: [VertexBufferLayout; 2] = [Vertex::desc(), InstanceRaw::desc()];
+    const VERTEX_BUFFERS: [VertexBufferLayout; 2] =
+        [card::Vertex::BUFFER_LAYOUT, InstanceRaw::desc()];
 
     VertexState {
         module: shader,
@@ -420,17 +361,17 @@ impl State {
             &camera_bind_group_layout,
         );
 
-        let vertex_buffer = create_buffer(&device, "Vertex Buffer", VERTICES, BufferUsages::VERTEX);
-        let index_buffer = create_buffer(&device, "Index Buffer", INDICES, BufferUsages::INDEX);
+        let vertex_buffer = card::create_vertex_buffer(&device);
+        let index_buffer = card::create_index_buffer(&device);
 
-        let num_indices = INDICES.len() as u32;
+        let num_indices = card::INDICES.len() as u32;
 
         let instances = (0..4)
             .flat_map(|suit| {
                 (0..13).map(move |rank| {
                     let position = cgmath::Vector3::new(
-                        1.2 * (CARD_WIDTH as f32) * (rank as f32 - 6.0),
-                        1.2 * (CARD_HEIGHT as f32) * (suit as f32 - 1.5),
+                        1.2 * (card::WIDTH as f32) * (rank as f32 - 6.0),
+                        1.2 * (card::HEIGHT as f32) * (suit as f32 - 1.5),
                         0.0,
                     );
 
