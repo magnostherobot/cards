@@ -3,6 +3,8 @@ struct InstanceInput {
     @location(6) model_matrix_1: vec4<f32>,
     @location(7) model_matrix_2: vec4<f32>,
     @location(8) model_matrix_3: vec4<f32>,
+    @location(9) rank: u32,
+    @location(10) suit: u32,
 }
 
 struct CameraUniform {
@@ -20,6 +22,8 @@ struct VertexInput {
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
     @location(0) tex_coords: vec2<f32>,
+    @location(1) rank: u32,
+    @location(2) suit: u32,
 };
 
 @vertex
@@ -37,6 +41,8 @@ fn vs_main(
     var out: VertexOutput;
     out.tex_coords = model.tex_coords;
     out.clip_position = camera.view_proj * instance_matrix * vec4<f32>(model.position, 1.0);
+    out.rank = instance.rank;
+    out.suit = instance.suit;
     return out;
 }
 
@@ -48,5 +54,11 @@ var s_diffuse: sampler;
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    return textureSample(t_diffuse, s_diffuse, in.tex_coords);
+    let cards_per_row = 13.0;
+    let cards_per_col = 4.0;
+
+    let x = (f32(in.rank) + in.tex_coords.x) / cards_per_row;
+    let y = (f32(in.suit) + in.tex_coords.y) / cards_per_col;
+
+    return textureSample(t_diffuse, s_diffuse, vec2(x, y));
 }

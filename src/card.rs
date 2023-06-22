@@ -23,6 +23,15 @@ impl Suit {
             Suit::Diamonds => 1,
         }
     }
+
+    pub fn texture_index(&self) -> u8 {
+        match self {
+            Suit::Clubs => 3,
+            Suit::Spades => 2,
+            Suit::Hearts => 0,
+            Suit::Diamonds => 1,
+        }
+    }
 }
 
 type Rank = u8;
@@ -43,6 +52,8 @@ impl Card {
                     .chain_err(|| "couldn't cast card position vector")?,
             )
             .into(),
+            rank: self.rank as u32,
+            suit: self.suit.texture_index() as u32,
         })
     }
 }
@@ -51,6 +62,8 @@ impl Card {
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Instance {
     model: [[f32; 4]; 4],
+    rank: u32,
+    suit: u32,
 }
 
 impl Instance {
@@ -66,6 +79,8 @@ impl Instance {
                 VertexFormat::Float32x4,
                 VertexFormat::Float32x4,
                 VertexFormat::Float32x4,
+                VertexFormat::Uint32,
+                VertexFormat::Uint32,
             ),
         }
     };
@@ -99,7 +114,7 @@ pub const VERTICES: &[Vertex] = {
         ($x:expr, $y:expr $(,)?) => {{
             Vertex {
                 position: [($x - 0.5) * WIDTH as f32, ($y - 0.5) * HEIGHT as f32, 0.0],
-                tex_coords: [$x / 13.0, (1.0 - $y) / 4.0],
+                tex_coords: [$x, (1.0 - $y)],
             }
         }};
     }
