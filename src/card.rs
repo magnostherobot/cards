@@ -54,6 +54,7 @@ impl Card {
             .into(),
             rank: self.rank as u32,
             suit: self.suit.texture_index() as u32,
+            facedown: self.facedown as u32,
         })
     }
 }
@@ -64,6 +65,7 @@ pub struct Instance {
     model: [[f32; 4]; 4],
     rank: u32,
     suit: u32,
+    facedown: u32,
 }
 
 impl Instance {
@@ -79,6 +81,7 @@ impl Instance {
                 VertexFormat::Float32x4,
                 VertexFormat::Float32x4,
                 VertexFormat::Float32x4,
+                VertexFormat::Uint32,
                 VertexFormat::Uint32,
                 VertexFormat::Uint32,
             ),

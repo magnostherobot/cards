@@ -321,14 +321,14 @@ impl State {
                 (0..13u8).map(move |rank| {
                     let position = cgmath::Vector3::new(
                         (1.2 * card::WIDTH as f32 * (rank as f32 - 6.0)) as i32,
-                        (1.2 * card::HEIGHT as f32 * (suit.doppelkopf_suit_strength() as f32 - 2.0))
+                        (1.2 * card::HEIGHT as f32 * (suit.doppelkopf_suit_strength() as f32 - 2.5))
                             as i32,
                         0,
                     );
 
                     Card {
                         position,
-                        facedown: false,
+                        facedown: (rank + suit.doppelkopf_suit_strength()) % 3 == 0,
                         rank,
                         suit,
                     }
